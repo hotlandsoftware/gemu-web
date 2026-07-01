@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>GEMU Web — CHIP-8 test</title>
+<style>
+  body { background:#1a1a1f; color:#ddd; font:14px/1.5 system-ui, sans-serif;
+         max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
+  h1 { font-size: 1.2rem; }
+  canvas { display:block; background:#000; image-rendering: pixelated;
+           border: 1px solid #444; margin: 1rem 0; }
+  #controls { display:flex; gap:.5rem; margin-bottom:1rem; }
+  button { background:#2d2d36; color:#ddd; border:1px solid #555;
+           padding:.3rem .9rem; cursor:pointer; }
+  button:hover { background:#3a3a46; }
+  #log { background:#000; border:1px solid #444; padding:.5rem; height:12rem;
+         overflow-y:auto; font:12px/1.4 monospace; white-space:pre-wrap; }
+  #monform { display:flex; gap:.5rem; margin-top:.5rem; }
+  #monin { flex:1; background:#000; color:#ddd; border:1px solid #555;
+           font:12px monospace; padding:.3rem; }
+  #status { color:#8a8; }
+</style>
+</head>
+<body>
+<h1>GEMU Web — CHIP-8 test page</h1>
+<p id="status">loading…</p>
+<canvas id="canvas" tabindex="0"></canvas>
+<div id="controls">
+  <button id="btn-reset" disabled>Reset</button>
+  <button id="btn-pause" disabled>Pause</button>
+  <button id="btn-cont"  disabled>Continue</button>
+</div>
+<div id="log"></div>
+<form id="monform">
+  <input id="monin" placeholder="GEMU monitor command (try: help)" autocomplete="off">
+  <button disabled id="btn-send">Send</button>
+</form>
+
+<script src="../dist/gemu-chip8.js"></script>
+<script>
+const logEl = document.getElementById('log');
+const statusEl = document.getElementById('status');
+
+function log(text) {
+  logEl.textContent += text + '\n';
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+createGemu({
+  canvas: document.getElementById('canvas'),
+  print: log,
+  printErr: log,
+}).then(async (Module) => {
+  const resp = await fetch('test.ch8');
+  Module.FS.writeFile('/test.ch8', new Uint8Array(await resp.arrayBuffer()));
+  Module.callMain(['-M', 'chip8', '/test.ch8']);
+  statusEl.textContent = 'running — box should scroll across the screen';
+
+  const send = line => {
+    log('(gemu) ' + line);
+    Module.ccall('gemu_web_monitor_input', null, ['string'], [line]);
+  };
+  window.gemuSend = send; // console access for poking around
+
+  for (const id of ['btn-reset', 'btn-pause', 'btn-cont', 'btn-send'])
+    document.getElementById(id).disabled = false;
+  document.getElementById('btn-reset').onclick = () => send('system_reset');
+  document.getElementById('btn-pause').onclick = () => send('stop');
+  document.getElementById('btn-cont').onclick  = () => send('cont');
+  document.getElementById('monform').onsubmit = (e) => {
+    e.preventDefault();
+    const input = document.getElementById('monin');
+    if (input.value.trim()) send(input.value.trim());
+    input.value = '';
+  };
+}).catch(err => {
+  statusEl.textContent = 'failed: ' + err;
+  log(String(err.stack || err));
+});
+</script>
+</body>
+</html>
